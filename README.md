@@ -1,8 +1,8 @@
 # Pulse-Active v1.0.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Latest Release](https://img.shields.io/gitlab/v/release/corral1976/pulse)](https://gitlab.com/corral1976/pulse/-/releases)
-[![Pipeline Status](https://gitlab.com/corral1976/pulse/badges/main/pipeline.svg)](https://gitlab.com/corral1976/pulse/-/pipelines)
+[![Latest Release](https://img.shields.io/github/v/release/corral1976/pulse)](https://github.com/corral1976/pulse/-/releases)
+[![Pipeline Status](https://github.com/corral1976/pulse/badges/main/pipeline.svg)](https://github.com/corral1976/pulse/-/pipelines)
 
 ![Pulse Preview](preview.png)
 
