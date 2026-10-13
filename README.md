@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Latest Release](https://img.shields.io/github/v/release/corral1976/pulse)](https://github.com/corral1976/pulse/-/releases)
-[![Pipeline Status](https://github.com/corral1976/pulse/badges/main/pipeline.svg)](https://github.com/corral1976/pulse/-/pipelines)
+[![build](https://img.shields.io/github/actions/workflow/status/corral1976/pulse/main.yml?style=for-the-badge&label=build&labelColor=282828&color=b8bb26&logo=githubactions&logoColor=fbf1c7&logoSize=auto)](https://github.com/corral1976/pulse/actions)
 
 ![Pulse Preview](preview.png)
 
