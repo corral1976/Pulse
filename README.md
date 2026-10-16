@@ -1,8 +1,8 @@
 # Pulse-Active v1.0.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub release](https://img.shields.io/github/v/release/corral1976/pulse)](https://github.com/corral1976/pulse/releases)
-[![build](https://img.shields.io/github/actions/workflow/status/corral1976/pulse/.github/workflows/ci.yml?style=flat&label=build&labelColor=282828&color=2ea44f&logo=githubactions&logoColor=fbf1c7&logoSize=auto)](https://github.com/corral1976/pulse/actions)
+[![GitHub release](https://img.shields.io/github/v/release/corral1976/pulse?cacheSeconds=3600)](https://github.com/corral1976/pulse/releases)
+[![CI](https://github.com/corral1976/pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/corral1976/pulse/actions/workflows/ci.yml)
 
 ![Pulse Preview](preview.png)
 
@@ -30,7 +30,7 @@ Pulse is a single Bash script, so it runs on **any Linux distribution**. Which m
 
 ### Method A: .deb package (Debian, Ubuntu, Linux Mint and derivatives)
 
-1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://gitlab.com/corral1976/pulse/-/releases).
+1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://github.com/corral1976/pulse/releases).
 2. Install it from the folder where you downloaded it:
 
 ```bash
@@ -42,7 +42,7 @@ sudo apt install ./pulse-active_1.0.0_all.deb
 **Building the .deb yourself (optional):**
 
 ```bash
-git clone https://gitlab.com/corral1976/pulse.git
+git clone https://github.com/corral1976/pulse.git
 cd pulse
 bash BUILD_DEB.sh
 sudo apt install ./pulse-active_1.0.0_all.deb
@@ -53,7 +53,7 @@ sudo apt install ./pulse-active_1.0.0_all.deb
 No package is needed: just put the script in a folder that is in your `PATH` and make it executable. `/usr/local/bin` is the standard place for this and works the same on every distribution.
 
 ```bash
-git clone https://gitlab.com/corral1976/pulse.git
+git clone https://github.com/corral1976/pulse.git
 cd pulse
 sudo install -Dm755 debian/usr/bin/pulse /usr/local/bin/pulse
 ```
@@ -178,8 +178,8 @@ MIT License - See LICENSE file for details.
 
 ## Support
 
-- **Repository**: https://gitlab.com/corral1976/pulse
-- **Issues**: https://gitlab.com/corral1976/pulse/-/issues
+- **Repository**: https://github.com/corral1976/pulse
+- **Issues**: https://github.com/corral1976/pulse/issues
 - **Support**: https://ko-fi.com/retrolcdclock
 
 ## Author

@@ -1,36 +1,81 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Check Bash syntax
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          bash -n debian/usr/bin/pulse
+          bash -n BUILD_DEB.sh
+          bash -n debian/DEBIAN/postinst
+          bash -n debian/DEBIAN/prerm
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --severity=warning debian/usr/bin/pulse BUILD_DEB.sh debian/DEBIAN/postinst debian/DEBIAN/prerm
+
+      - name: Smoke test (--version and --help)
+        run: |
+          bash debian/usr/bin/pulse --version
+          bash debian/usr/bin/pulse --help
+
+      - name: Smoke test (quiet mode)
+        run: |
+          set +e
+          timeout 3 bash debian/usr/bin/pulse -q < /dev/null > quiet.txt 2>&1
+          code=$?
+          set -e
+          [ "$code" -eq 0 ] || [ "$code" -eq 124 ]
+          grep -q "CPU:" quiet.txt
+
+      - name: Build .deb package
+        run: bash BUILD_DEB.sh
+
+      - name: Inspect package
+        run: |
+          dpkg -I pulse-active_*_all.deb
+          dpkg -c pulse-active_*_all.deb
+
+      - name: Install and run packaged version
+        run: |
+          sudo apt-get install -y ./pulse-active_*_all.deb
+          pulse --version
+          sudo apt-get remove -y pulse-active
+
+      - name: Upload .deb as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-active-deb
+          path: pulse-active_*_all.deb
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .deb package
+        run: bash BUILD_DEB.sh
+
+      - name: Attach .deb to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pulse-active_*_all.deb
