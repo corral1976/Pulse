@@ -646,14 +646,14 @@ play_intro() {
         disk_p_now="${disk_p_now:-0}"
 
         local l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12
-        l01=$(printf "      ${C} .MMM.   .MMM.  ${RESET}    ${COL_G1}> user    ${COL_DIM}│ ${RESET}%s" "$USER")
-        l02=$(printf "      ${C}.MMMMMM.MMMMMM. ${RESET}    ${COL_G1}> uptime  ${COL_DIM}│ ${RESET}%s" "$UPTIME")
-        l03=$(printf "      ${C}MMMMMMMMMMMMMMM ${RESET}    ${COL_G1}> display ${COL_DIM}│ ${RESET}%s" "$RES")
-        l04=$(printf "      ${C}MMMMMMMMMMMMMMM ${RESET}    ${COL_G2}> distro  ${COL_DIM}│ ${RESET}%s" "$OS")
-        l05=$(printf "      ${C}'MMMMMMMMMMMMM' ${RESET}    ${COL_G2}> kernel  ${COL_DIM}│ ${RESET}%s" "$KERNEL")
-        l06=$(printf "      ${C}  'MMMMMMMMM'   ${RESET}    ${COL_G2}> wm      ${COL_DIM}│ ${RESET}%s" "$WM")
-        l07=$(printf "      ${C}    'MMMMM'     ${RESET}    ${COL_G3}> desktop ${COL_DIM}│ ${RESET}%s" "$DE")
-        l08=$(printf "      ${C}      'M'       ${RESET}    ${COL_G3}> term    ${COL_DIM}│ ${RESET}%s" "$TERM_N")
+        l01=$(printf "      ${C} .MMMM.  .MMMM. ${RESET}    ${COL_G1}> user    ${COL_DIM}│ ${RESET}%s" "$USER")
+        l02=$(printf "      ${C}.MMMMMM..MMMMMM.${RESET}    ${COL_G1}> uptime  ${COL_DIM}│ ${RESET}%s" "$UPTIME")
+        l03=$(printf "      ${C}MMMMMMMMMMMMMMMM${RESET}    ${COL_G1}> display ${COL_DIM}│ ${RESET}%s" "$RES")
+        l04=$(printf "      ${C}MMMMMMMMMMMMMMMM${RESET}    ${COL_G2}> distro  ${COL_DIM}│ ${RESET}%s" "$OS")
+        l05=$(printf "      ${C}'MMMMMMMMMMMMMM'${RESET}    ${COL_G2}> kernel  ${COL_DIM}│ ${RESET}%s" "$KERNEL")
+        l06=$(printf "      ${C}  'MMMMMMMMMM'  ${RESET}    ${COL_G2}> wm      ${COL_DIM}│ ${RESET}%s" "$WM")
+        l07=$(printf "      ${C}    'MMMMMM'    ${RESET}    ${COL_G3}> desktop ${COL_DIM}│ ${RESET}%s" "$DE")
+        l08=$(printf "      ${C}      'MM'      ${RESET}    ${COL_G3}> term    ${COL_DIM}│ ${RESET}%s" "$TERM_N")
         l09=$(printf "      ${C}  PULSE-ACTIVE  ${RESET}    ${COL_G3}> shell   ${COL_DIM}│ ${RESET}%s" "$SHELL_V")
         l10=$(printf "      ${COL_WHITE}   [%s]${RESET}       ${COL_G4}> apps    ${COL_DIM}│ ${RESET}%s" "$now_ts" "$PKGS")
         l11=$(printf "      ${COL_DIM}----------------${RESET}    ${COL_G4}> disk    ${COL_DIM}│ ${RESET}%s%%" "$disk_p_now")
@@ -684,14 +684,14 @@ play_intro() {
         ttylines+=("$(printf "║                    Universal Edition v%-25s║" "${SCRIPT_VERSION}")")
         ttylines+=("$(printf "╚════════════════════════════════════════════════════════════════╝")")
         ttylines+=("")
-        ttylines+=("$(printf "       .MMM.   .MMM.  ")")
-        ttylines+=("$(printf "      .MMMMMM.MMMMMM. ")")
-        ttylines+=("$(printf "      MMMMMMMMMMMMMMM ")")
-        ttylines+=("$(printf "      MMMMMMMMMMMMMMM ")")
-        ttylines+=("$(printf "      'MMMMMMMMMMMMM' ")")
-        ttylines+=("$(printf "        'MMMMMMMMM'   ")")
-        ttylines+=("$(printf "          'MMMMM'     ")")
-        ttylines+=("$(printf "            'M'       ")")
+        ttylines+=("$(printf "       .MMMM.  .MMMM. ")")
+        ttylines+=("$(printf "      .MMMMMM..MMMMMM.")")
+        ttylines+=("$(printf "      MMMMMMMMMMMMMMMM")")
+        ttylines+=("$(printf "      MMMMMMMMMMMMMMMM")")
+        ttylines+=("$(printf "      'MMMMMMMMMMMMMM'")")
+        ttylines+=("$(printf "        'MMMMMMMMMM'  ")")
+        ttylines+=("$(printf "          'MMMMMM'    ")")
+        ttylines+=("$(printf "            'MM'      ")")
         ttylines+=("$(printf "        PULSE-ACTIVE  ")")
         ttylines+=("$(printf "         [%s]" "$now_ts")")
         ttylines+=("")
@@ -729,13 +729,13 @@ draw_dashboard_gui() {
     local h1 h2 h3 h4 h5 h6 h7 h8
 
     if [ "$heart_mode" = "full" ]; then
-        h1=" .MMM.   .MMM.  "; h2=".MMMMMM.MMMMMM. "; h3="MMMMMMMMMMMMMMM "
-        h4="MMMMMMMMMMMMMMM "; h5="'MMMMMMMMMMMMM' "; h6="  'MMMMMMMMM'   "
-        h7="    'MMMMM'     "; h8="      'M'       "
+        h1=" .MMMM.  .MMMM. "; h2=".MMMMMM..MMMMMM."; h3="MMMMMMMMMMMMMMMM"
+        h4="MMMMMMMMMMMMMMMM"; h5="'MMMMMMMMMMMMMM'"; h6="  'MMMMMMMMMM'  "
+        h7="    'MMMMMM'    "; h8="      'MM'      "
     else
-        h1=" .:::.   .:::.  "; h2=".::::::.::::::. "; h3="::::::::::::::: "
-        h4="::::::::::::::: "; h5="':::::::::::::' "; h6="  ':::::::::'   "
-        h7="    ':::::'     "; h8="      ':'       "
+        h1=" .::::.  .::::. "; h2=".::::::..::::::."; h3="::::::::::::::::"
+        h4="::::::::::::::::"; h5="'::::::::::::::'"; h6="  '::::::::::'  "
+        h7="    '::::::'    "; h8="      '::'      "
     fi
 
     local now_hms
@@ -853,14 +853,14 @@ else
     printf "║                    Universal Edition v%-25s║\n" "${SCRIPT_VERSION}"
     printf "╚════════════════════════════════════════════════════════════════╝\n\n"
     
-    printf "       .MMM.   .MMM.  \n"
-    printf "      .MMMMMM.MMMMMM. \n"
-    printf "      MMMMMMMMMMMMMMM \n"
-    printf "      MMMMMMMMMMMMMMM \n"
-    printf "      'MMMMMMMMMMMMM' \n"
-    printf "        'MMMMMMMMM'   \n"
-    printf "          'MMMMM'     \n"
-    printf "            'M'       \n"
+    printf "       .MMMM.  .MMMM. \n"
+    printf "      .MMMMMM..MMMMMM.\n"
+    printf "      MMMMMMMMMMMMMMMM\n"
+    printf "      MMMMMMMMMMMMMMMM\n"
+    printf "      'MMMMMMMMMMMMMM'\n"
+    printf "        'MMMMMMMMMM'  \n"
+    printf "          'MMMMMM'    \n"
+    printf "            'MM'      \n"
     printf "        PULSE-ACTIVE  \n"
     printf "         [%s]\n\n" "$(date +'%H:%M:%S')"
     
