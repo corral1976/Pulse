@@ -641,8 +641,8 @@ play_intro() {
         C=""; RESET=""; COL_DIM=""; COL_WHITE=""; COL_G1=""; COL_G2=""; COL_G3=""; COL_G4=""
 
         # DISK_P tampoco existe todavía; se toma una muestra puntual para el frame tipeado.
-        local disk_used_snap disk_p_now
-        read -r disk_used_snap _ disk_p_now < <(get_disk_info "$DISK_PATH")
+        local disk_p_now
+        read -r _ _ disk_p_now < <(get_disk_info "$DISK_PATH")
         disk_p_now="${disk_p_now:-0}"
 
         local l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12
