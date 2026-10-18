@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-if [ -x /usr/bin/update-desktop-database ]; then
-    update-desktop-database /usr/share/applications > /dev/null 2>&1 || true
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
 fi
 
-if [ -x /usr/bin/update-icon-caches ]; then
-    update-icon-caches /usr/share/icons/* > /dev/null 2>&1 || true
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -f -t /usr/share/icons/hicolor || true
 fi
 
 exit 0

@@ -26,6 +26,11 @@ if [ ! -f "$DEBIAN_DIR/usr/bin/pulse" ]; then
     exit 1
 fi
 
+if [ ! -f "$DEBIAN_DIR/usr/share/icons/hicolor/scalable/apps/pulse.svg" ]; then
+    echo "Error: icon not found at usr/share/icons/hicolor/scalable/apps/pulse.svg!"
+    exit 1
+fi
+
 INSTALLED_SIZE=$(du -sk "$DEBIAN_DIR" | cut -f1)
 
 sed -i "s/^Installed-Size:.*/Installed-Size: $INSTALLED_SIZE/" "$DEBIAN_DIR/DEBIAN/control" || true
@@ -36,6 +41,7 @@ find "$DEBIAN_DIR" -type f ! -path "*/DEBIAN/*" -exec chmod 644 {} \;
 chmod 755 "$DEBIAN_DIR/usr/bin/pulse"
 chmod 755 "$DEBIAN_DIR/DEBIAN/postinst" 2>/dev/null || true
 chmod 755 "$DEBIAN_DIR/DEBIAN/prerm" 2>/dev/null || true
+chmod 755 "$DEBIAN_DIR/DEBIAN/postrm" 2>/dev/null || true
 
 echo "Building package..."
 dpkg-deb --build --root-owner-group "$DEBIAN_DIR" "$OUTPUT_FILE"
