@@ -50,7 +50,7 @@ bash BUILD_DEB.sh
 sudo apt install ./pulse-active_1.0.0_all.deb
 ```
 
-**Or use the install script**, which clones the latest version from GitLab, builds the `.deb` and installs it in one step (it uses `sudo` for the final step). Download it, review it, then run it:
+**Or use the install script**, which clones the latest version from GitLab, builds the `.deb` and installs it in one step (it uses `sudo` for the final step). Download it, review it (Press 'q' to exit less), then run it:
 
 ```bash
 curl -fLO https://gitlab.com/corral1976/pulse/-/raw/main/install_pulse.sh
