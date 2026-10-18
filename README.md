@@ -1,9 +1,9 @@
 # Pulse-Active v1.0.0
 
-[![GitHub release](https://img.shields.io/github/v/release/corral1976/pulse?cacheSeconds=3600)](https://github.com/corral1976/pulse/releases)
-[![build](https://img.shields.io/github/actions/workflow/status/corral1976/pulse/ci.yml?style=flat&label=build&labelColor=282828&color=2ea44f&logo=githubactions&logoColor=fbf1c7&logoSize=auto)](https://github.com/corral1976/pulse/actions)
+[![Latest Release](https://img.shields.io/gitlab/v/release/corral1976/pulse)](https://gitlab.com/corral1976/pulse/-/releases)
+[![Pipeline Status](https://gitlab.com/corral1976/pulse/badges/main/pipeline.svg)](https://gitlab.com/corral1976/pulse/-/pipelines)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![stars](https://img.shields.io/github/stars/corral1976/pulse?style=flat&label=stars&labelColor=282828&color=d79921&logo=starship&logoColor=fbf1c7&logoSize=auto)](https://github.com/corral1976/pulse)
+
 
 ![Pulse Preview](preview.png)
 
@@ -31,7 +31,7 @@ Pulse is a single Bash script, so it runs on **any Linux distribution**. Which m
 
 ### Method A: .deb package (Debian, Ubuntu, Linux Mint and derivatives)
 
-1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://github.com/corral1976/pulse/releases).
+1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://gitlab.com/corral1976/pulse/-/releases).
 2. Install it from the folder where you downloaded it:
 
 ```bash
@@ -43,18 +43,28 @@ sudo apt install ./pulse-active_1.0.0_all.deb
 **Building the .deb yourself (optional):**
 
 ```bash
-git clone https://github.com/corral1976/pulse.git
+git clone https://gitlab.com/corral1976/pulse.git
 cd pulse
 bash BUILD_DEB.sh
 sudo apt install ./pulse-active_1.0.0_all.deb
 ```
+
+**Or use the install script**, which clones the latest version from GitLab, builds the `.deb` and installs it in one step (it uses `sudo` for the final step). Download it, review it, then run it:
+
+```bash
+curl -fLO https://gitlab.com/corral1976/pulse/-/raw/main/install_pulse.sh
+less install_pulse.sh
+bash install_pulse.sh
+```
+
+If you already cloned the repository, `bash install_pulse.sh --local` builds and installs from that folder instead (handy to test changes before pushing them).
 
 ### Method B: manual install (any Linux distribution)
 
 No package is needed: just put the script in a folder that is in your `PATH` and make it executable. `/usr/local/bin` is the standard place for this and works the same on every distribution.
 
 ```bash
-git clone https://github.com/corral1976/pulse.git
+git clone https://gitlab.com/corral1976/pulse.git
 cd pulse
 sudo install -Dm755 debian/usr/bin/pulse /usr/local/bin/pulse
 ```
@@ -168,6 +178,8 @@ Install the equivalents of the packages listed under [Requirements](#requirement
 sudo apt remove pulse-active
 ```
 
+Or run `bash uninstall_pulse.sh`, which also checks that every installed file is gone.
+
 **Method B (manual):**
 ```bash
 sudo rm /usr/local/bin/pulse          # or, if installed for your user only: rm ~/.local/bin/pulse
@@ -179,8 +191,8 @@ MIT License - See LICENSE file for details.
 
 ## Support
 
-- **Repository**: https://github.com/corral1976/pulse
-- **Issues**: https://github.com/corral1976/pulse/issues
+- **Repository**: https://gitlab.com/corral1976/pulse
+- **Issues**: https://gitlab.com/corral1976/pulse/-/issues
 - **Support**: https://ko-fi.com/retrolcdclock
 
 ## Author
