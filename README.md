@@ -31,7 +31,7 @@ Pulse is a single Bash script, so it runs on **any Linux distribution**. Which m
 
 ### Method A: .deb package (Debian, Ubuntu, Linux Mint and derivatives)
 
-1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://gitlab.com/corral1976/pulse/-/releases).
+1. Download `pulse-active_1.0.0_all.deb` from the [Releases page](https://github.com/corral1976/pulse/releases).
 2. Install it from the folder where you downloaded it:
 
 ```bash
