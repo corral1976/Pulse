@@ -1,0 +1,18 @@
+Package: pulse-active
+Version: @VERSION@
+Architecture: all
+Section: utils
+Priority: optional
+Installed-Size: @SIZE@
+Maintainer: Carlos Corral <corral1976@gmail.com>
+Depends: bash (>= 4.0)
+Recommends: lm-sensors, mesa-utils, pciutils, upower, x11-utils, x11-xserver-utils, procps
+Suggests: nvidia-smi
+Homepage: https://github.com/corral1976/Pulse
+Description: minimalist and elegant system monitor for the terminal
+ Pulse-Active is a real-time system monitor featuring:
+ .
+  - Dual-mode display (GUI with colors, TTY with ASCII)
+  - CPU, RAM, disk, network and temperature metrics
+  - Quiet and one-shot modes for scripting and dashboards
+  - Desktop integration with launcher and icon

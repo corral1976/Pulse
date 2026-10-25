@@ -1,0 +1,13 @@
+# Archivos generados por el build
+*.deb
+*.tar.gz
+*.tar.xz
+
+# Archivos temporales
+*~
+*.swp
+*.swo
+
+# Sistema
+.DS_Store
+Thumbs.db

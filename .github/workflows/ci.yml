@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check shell syntax
+        run: |
+          bash -n src/pulse BUILD_DEB.sh install_pulse.sh uninstall_pulse.sh
+          sh -n packaging/debian/postinst
+          sh -n packaging/debian/postrm
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck desktop-file-utils lintian
+          shellcheck --severity=warning src/pulse BUILD_DEB.sh install_pulse.sh uninstall_pulse.sh \
+            packaging/debian/postinst packaging/debian/postrm
+
+      - name: Validate .desktop file
+        run: desktop-file-validate data/pulse-active.desktop
+
+      - name: Smoke tests (version, help, options)
+        run: |
+          bash src/pulse --version
+          bash src/pulse --help
+          set +e
+          bash src/pulse --bogus 2>/dev/null
+          [ "$?" -eq 2 ]
+
+      - name: Smoke test (--once output format)
+        run: |
+          out="$(bash src/pulse --once)"
+          echo "$out"
+          echo "$out" | grep -Eq '^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] CPU: *[0-9]+%  RAM: *[0-9]+%  DSK: *[0-9]+%  NET D:[0-9]+KB/s U:[0-9]+KB/s  TEMP:'
+
+      - name: Regression test (no busy loop without a terminal)
+        run: |
+          # Without a tty on stdin the loop used to spin at 100% CPU and print
+          # hundreds of lines per second. At 1 line/second we expect at most 4.
+          lines="$(timeout 3 bash src/pulse -q -i 1 < /dev/null | wc -l)"
+          echo "lines printed in 3s: $lines"
+          [ "$lines" -le 4 ]
+
+      - name: Regression test (quiet mode emits no escape codes)
+        run: |
+          out="$(WAYLAND_DISPLAY=wl-0 bash src/pulse --once)"
+          ! printf '%s' "$out" | grep -q $'\e'
+
+      - name: Generic install / uninstall (make)
+        run: |
+          make install PREFIX=/tmp/pulse-prefix
+          /tmp/pulse-prefix/bin/pulse --version
+          make uninstall PREFIX=/tmp/pulse-prefix
+          [ ! -e /tmp/pulse-prefix/bin/pulse ]
+
+      - name: Build .deb package
+        run: bash BUILD_DEB.sh
+
+      - name: Inspect package
+        run: |
+          dpkg -I pulse-active_*_all.deb
+          dpkg -c pulse-active_*_all.deb
+          lintian --fail-on error --tag-display-limit 0 pulse-active_*_all.deb
+
+      - name: Install, run and purge packaged version
+        run: |
+          sudo apt-get install -y ./pulse-active_*_all.deb
+          pulse --version
+          man -w pulse || true
+          sudo apt-get purge -y pulse-active
+          [ ! -e /usr/bin/pulse ]
+
+      - name: Upload .deb as artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: pulse-active-deb
+          path: pulse-active_*_all.deb
+
+  portability:
+    name: Install on ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: fedora:latest
+            setup: dnf install -y git make gawk procps-ng
+          - image: archlinux:latest
+            setup: pacman -Syu --noconfirm git make gawk procps-ng
+    container: ${{ matrix.image }}
+
+    steps:
+      - name: Install build tools
+        run: ${{ matrix.setup }}
+
+      - uses: actions/checkout@v5
+
+      - name: make install, run, make uninstall
+        run: |
+          make install PREFIX=/usr/local
+          /usr/local/bin/pulse --version
+          /usr/local/bin/pulse --once
+          make uninstall PREFIX=/usr/local
+          [ ! -e /usr/local/bin/pulse ]
+
+  release:
+    needs: [build, portability]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build .deb package
+        run: bash BUILD_DEB.sh
+
+      - name: Attach .deb to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pulse-active_*_all.deb

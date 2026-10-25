@@ -1,0 +1,74 @@
+.TH PULSE 1 "October 2026" "Pulse-Active" "User Commands"
+.SH NAME
+pulse \- minimalist real-time system monitor for the terminal
+.SH SYNOPSIS
+.B pulse
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B pulse
+shows CPU (usage, frequency and history graph), RAM, disk, network and
+temperature information in real time. In a graphical session or any
+UTF-8 terminal it draws the full coloured dashboard; on a Linux virtual
+console it falls back to an ASCII layout.
+.PP
+Press any key to exit the interactive dashboard.
+.SH OPTIONS
+.TP
+.BR \-i ", " \-\-interval " " \fISECONDS\fR
+Refresh interval in seconds (positive integer, default 1).
+.TP
+.BR \-q ", " \-\-quiet
+Single-line output instead of the dashboard. Selected automatically when
+standard output is not a terminal.
+.TP
+.BR \-1 ", " \-\-once
+Print one quiet-mode line and exit. Implies \fB\-\-quiet\fR.
+.TP
+.BR \-n ", " \-\-no\-color
+Disable colours (also disabled when \fBNO_COLOR\fR is set).
+.TP
+.BR \-h ", " \-\-help
+Show a help message and exit.
+.TP
+.BR \-v ", " \-\-version
+Show version information and exit.
+.SH ENVIRONMENT
+.TP
+.B DISK_PATH
+Mount point or directory whose disk usage is shown (default
+.IR / ).
+.TP
+.B WM
+Override window manager auto-detection.
+.TP
+.B NO_COLOR
+If set to a non-empty value, disable colours.
+.SH QUIET OUTPUT
+.EX
+[12:00:00] CPU: 12%  RAM: 34%  DSK:  5%  NET D:0KB/s U:0KB/s  TEMP:45.0°C
+.EE
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit.
+.TP
+.B 1
+Missing essential commands or unusable
+.IR /proc .
+.TP
+.B 2
+Invalid option.
+.SH OPTIONAL TOOLS
+Temperatures are read from sysfs when available;
+.BR sensors (1),
+.BR nvidia\-smi (1),
+.BR upower (1),
+.BR xrandr (1)
+and
+.BR lspci (8)
+add more detail when installed.
+.SH AUTHOR
+Carlos Corral <corral1976@gmail.com>
+.SH SEE ALSO
+.BR top (1),
+.BR sensors (1)

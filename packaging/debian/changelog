@@ -1,0 +1,25 @@
+pulse-active (1.1.0) unstable; urgency=low
+
+  * Portability: new Makefile (PREFIX/DESTDIR) and generic installer that
+    work on any Linux distribution; the .deb is now just one install method.
+  * Source moved to src/pulse; the .deb is staged in a temporary directory.
+  * New --once option and automatic quiet mode when stdout is not a terminal.
+  * Fix: quiet mode no longer enters the alternate screen or prints escape
+    codes into pipes.
+  * Fix: busy loop (100% CPU) when stdin was not a terminal.
+  * Fix: sensor/disk/battery caches never persisted (they ran in subshells).
+  * Fix: GPU temperature no longer falls back to the NVMe sensor; CPU/GPU
+    temperatures are read from hwmon without needing lm-sensors.
+  * Fix: no more invented resolution/desktop values; real values from
+    xrandr, xdpyinfo or DRM, otherwise N/A.
+  * Fix: network rate is per second and ignores the loopback interface.
+  * Fix: script no longer aborts without $USER, $SHELL or hostname(1).
+  * Quiet output: NET now reports KB/s and the temperature field is TEMP:.
+
+ -- Carlos Corral <corral1976@gmail.com>  Sat, 24 Oct 2026 12:00:00 -0600
+
+pulse-active (1.0.0) unstable; urgency=low
+
+  * Initial release.
+
+ -- Carlos Corral <corral1976@gmail.com>  Wed, 01 Jan 2026 12:00:00 -0600
