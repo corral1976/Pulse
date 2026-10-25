@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Pulse-Active
+GenericName=System Monitor
+GenericName[es]=Monitor del sistema
+Comment=Universal system monitor (TTY + GUI)
+Comment[es]=Monitor universal del sistema (TTY + GUI)
+Exec=pulse
+Icon=pulse
+Terminal=true
+Categories=System;Monitor;ConsoleOnly;
+Keywords=monitor;system;cpu;ram;disk;network;temperature;terminal;
