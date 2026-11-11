@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="console-application">
+  <id>io.gitlab.corral1976.PulseActive</id>
+  <name>Pulse-Active</name>
+  <summary>Minimalist real-time system monitor for the terminal</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.gitlab.corral1976">
+    <name>Carlos Corral</name>
+  </developer>
+  <description>
+    <p>Pulse-Active shows CPU (with frequency and history graph), RAM, disk, network, temperatures and battery in real time, with a colored display on graphical terminals and an ASCII display on a TTY.</p>
+    <p>This package bundles lm-sensors and pciutils, so it needs nothing else installed on the host.</p>
+  </description>
+  <launchable type="desktop-id">io.gitlab.corral1976.PulseActive.desktop</launchable>
+  <provides>
+    <binary>pulse</binary>
+  </provides>
+  <url type="homepage">https://gitlab.com/corral1976/pulse</url>
+  <url type="bugtracker">https://gitlab.com/corral1976/pulse/-/issues</url>
+  <url type="donation">https://ko-fi.com/retrolcdclock</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://gitlab.com/corral1976/pulse/-/raw/main/preview.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.1.0" date="2026-10-24"/>
+  </releases>
+</component>

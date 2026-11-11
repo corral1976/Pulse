@@ -11,3 +11,7 @@
 # Sistema
 .DS_Store
 Thumbs.db
+flatpak/build-dir/
+flatpak/repo/
+flatpak/.flatpak-builder/
+*.flatpak
