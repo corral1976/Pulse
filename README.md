@@ -27,8 +27,9 @@ Pulse is a single Bash script, so it runs on **any Linux distribution**. Pick wh
 |---|---|
 | Debian, Ubuntu, **Linux Mint**, Pop!_OS, Zorin OS, elementary OS, MX Linux and other Debian/Ubuntu-based distros | [Method A: .deb package](#method-a-deb-package-debian-ubuntu-linux-mint-and-derivatives) |
 | **Fedora**, RHEL/CentOS/Rocky/Alma, openSUSE, **Arch/Manjaro**, and any other distro | [Method B: install from source](#method-b-install-from-source-any-linux-distribution) |
+| **Fedora Silverblue**, Kinoite, Bazzite and other immutable distributions (or any distro with Flatpak) | [Method C: Flatpak](#method-c-flatpak-fedora-silverblue-and-other-immutable-distributions) |
 
-> **New to Linux?** Debian, Ubuntu and Linux Mint users use Method A. Everyone else uses Method B. The `.deb` format only exists on Debian-family systems.
+> **New to Linux?** Debian, Ubuntu and Linux Mint users use Method A. Fedora Silverblue and other immutable distributions use Method C. Everyone else uses Method B. The `.deb` format only exists on Debian-family systems.
 
 ### Method A: .deb package (Debian, Ubuntu, Linux Mint and derivatives)
 
@@ -85,6 +86,29 @@ bash src/pulse
 ```
 
 **Distribution packagers:** `make install PREFIX=/usr DESTDIR=/path/to/pkgdir` follows the usual conventions.
+
+### Method C: Flatpak (Fedora Silverblue and other immutable distributions)
+
+1. Download `pulse-active-<version>.flatpak` from the [Releases page](https://github.com/corral1976/Pulse/releases).
+2. Install it from the folder where you downloaded it:
+
+```bash
+flatpak install --user pulse-active-*.flatpak
+```
+
+3. Run it:
+
+```bash
+flatpak run io.gitlab.corral1976.PulseActive
+```
+
+The Flatpak bundles `lm-sensors` and `pciutils`, so nothing else has to be installed on the host. To type just `pulse`, add an alias to your shell configuration:
+
+```bash
+alias pulse='flatpak run io.gitlab.corral1976.PulseActive'
+```
+
+Inside the sandbox Pulse cannot see the host's processes or package manager, so the NVIDIA GPU temperature (`nvidia-smi`) and the installed packages count show `N/A`, and the window manager is taken from the desktop environment.
 
 ### Check that it works
 
@@ -207,7 +231,7 @@ Layout: `src/pulse` (the program), `data/` (launcher and icon), `man/` (man page
 
 ## Removal
 
-**Any installation method:**
+**Any installation except Flatpak:**
 ```bash
 bash uninstall_pulse.sh
 ```
@@ -221,6 +245,11 @@ sudo apt remove pulse-active
 **Method B (from source):**
 ```bash
 sudo make uninstall                       # or: make uninstall PREFIX=$HOME/.local
+```
+
+**Method C (Flatpak):**
+```bash
+flatpak uninstall io.gitlab.corral1976.PulseActive
 ```
 
 ## License
