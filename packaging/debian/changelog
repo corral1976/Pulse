@@ -1,3 +1,12 @@
+pulse-active (1.1.1) unstable; urgency=low
+
+  * Fix: the dashboard no longer flickers. Frames are built once per tick and
+    written in a single synchronized update, without clearing the screen
+    first; the heartbeat only swaps the precomputed frames.
+  * TTY mode redraws in place instead of clearing the screen on every refresh.
+
+ -- Carlos Corral <corral1976@gmail.com>  Fri, 20 Nov 2026 15:30:00 -0600
+
 pulse-active (1.1.0) unstable; urgency=low
 
   * Portability: new Makefile (PREFIX/DESTDIR) and generic installer that
