@@ -1,14 +1,12 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-#
-# Install Pulse-Active on any Linux distribution.
 set -euo pipefail
 
 REPO_URL="https://github.com/corral1976/Pulse.git"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-METHOD="auto"     # auto | deb | generic
-SOURCE="auto"     # auto | local | remote
+METHOD="auto"
+SOURCE="auto"
 PREFIX="/usr/local"
 
 usage() {
@@ -62,7 +60,6 @@ as_root() {
     fi
 }
 
-# --- choose the install method ---
 if [ "$METHOD" = "auto" ]; then
     if command -v dpkg-deb >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
         METHOD="deb"
@@ -76,7 +73,6 @@ else
     require make "Install it with your package manager (e.g. 'sudo dnf install make' or 'sudo pacman -S make')."
 fi
 
-# --- choose the source ---
 if [ "$SOURCE" = "auto" ]; then
     if [ -f "$SRC_DIR/src/pulse" ] && [ -f "$SRC_DIR/Makefile" ]; then
         SOURCE="local"
@@ -86,6 +82,7 @@ if [ "$SOURCE" = "auto" ]; then
 fi
 
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/pulse-install.XXXXXX")"
+chmod 755 "$WORKDIR"
 trap 'rm -rf "$WORKDIR"' EXIT
 BUILD_DIR="$WORKDIR/pulse"
 
@@ -126,7 +123,6 @@ if [ "$METHOD" = "deb" ]; then
     dpkg -L pulse-active | grep -E 'bin/|icons|applications'
 else
     echo "=== Installing under $PREFIX ==="
-    # Use sudo only if the target is not writable by the current user.
     target="$PREFIX"
     while [ ! -e "$target" ]; do target="$(dirname "$target")"; done
     if [ -w "$target" ]; then

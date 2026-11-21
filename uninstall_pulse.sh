@@ -1,11 +1,5 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-#
-# Remove Pulse-Active, however it was installed (.deb, /usr/local or ~/.local),
-# and check that its files are gone.
-#
-# Usage:
-#   bash uninstall_pulse.sh
 set -euo pipefail
 
 PKG="pulse-active"
@@ -21,7 +15,6 @@ as_root() {
     fi
 }
 
-# rm that escalates only when the file is not removable by the current user
 remove_path() {
     local path="$1" parent
     [ -e "$path" ] || [ -L "$path" ] || return 0
@@ -35,7 +28,6 @@ remove_path() {
 
 echo "=== Removing $PKG ==="
 
-# 1) .deb installation
 if command -v dpkg >/dev/null 2>&1 && dpkg -s "$PKG" >/dev/null 2>&1; then
     as_root dpkg --purge "$PKG"
     if dpkg -s "$PKG" >/dev/null 2>&1; then
@@ -45,7 +37,6 @@ if command -v dpkg >/dev/null 2>&1 && dpkg -s "$PKG" >/dev/null 2>&1; then
     fi
 fi
 
-# 2) files installed with 'make install' / install_pulse.sh --generic / --user
 PREFIXES=("/usr/local" "$HOME/.local")
 for prefix in "${PREFIXES[@]}"; do
     for f in "$prefix/bin/pulse" \
@@ -61,7 +52,6 @@ for prefix in "${PREFIXES[@]}"; do
     done
 done
 
-# 3) verify
 leftovers=0
 for f in /usr/bin/pulse \
          /usr/share/applications/pulse-active.desktop \

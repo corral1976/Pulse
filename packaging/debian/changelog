@@ -1,3 +1,28 @@
+pulse-active (1.1.2) unstable; urgency=low
+
+  * TTY mode: the system information is now laid out to the right of the
+    heart, aligned in fixed columns, and the whole screen is pure ASCII.
+  * TTY mode: progress bars are aligned and no longer repeat the percentage.
+  * The dashboard adapts to the terminal height and to window resizing, so
+    the screen no longer scrolls on small terminals.
+  * Lower CPU use: the main loop reads CPU, memory, network, uptime and
+    frequency without spawning external processes.
+  * Colour codes are emitted once per bar segment instead of once per cell.
+  * New --no-intro option to skip the start-up animation.
+  * The start-up animation reuses the dashboard code.
+  * Key presses are no longer echoed while the dashboard is running.
+  * Colour support falls back to COLORTERM/TERM when tput is not available.
+  * Clean exit when the terminal hangs up (SIGHUP).
+  * An invalid or missing --interval value now exits with status 2, as the
+    manual page documents.
+  * BUILD_DEB.sh refuses to build when the changelog and src/pulse versions
+    differ.
+  * install_pulse.sh: the temporary build directory is readable by apt.
+  * Fix: wrong weekday in the 1.0.0 changelog entry.
+  * Code cleanup across all scripts.
+
+ -- Carlos Corral <corral1976@gmail.com>  Sat, 21 Nov 2026 12:00:00 -0600
+
 pulse-active (1.1.1) unstable; urgency=low
 
   * Fix: the dashboard no longer flickers. Frames are built once per tick and
@@ -31,4 +56,4 @@ pulse-active (1.0.0) unstable; urgency=low
 
   * Initial release.
 
- -- Carlos Corral <corral1976@gmail.com>  Wed, 01 Jan 2026 12:00:00 -0600
+ -- Carlos Corral <corral1976@gmail.com>  Thu, 01 Jan 2026 12:00:00 -0600

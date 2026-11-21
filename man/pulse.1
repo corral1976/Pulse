@@ -1,4 +1,4 @@
-.TH PULSE 1 "October 2026" "Pulse-Active" "User Commands"
+.TH PULSE 1 "November 2026" "Pulse-Active" "User Commands"
 .SH NAME
 pulse \- minimalist real-time system monitor for the terminal
 .SH SYNOPSIS
@@ -26,6 +26,9 @@ Print one quiet-mode line and exit. Implies \fB\-\-quiet\fR.
 .TP
 .BR \-n ", " \-\-no\-color
 Disable colours (also disabled when \fBNO_COLOR\fR is set).
+.TP
+.B \-\-no\-intro
+Skip the start-up animation.
 .TP
 .BR \-h ", " \-\-help
 Show a help message and exit.
@@ -57,7 +60,7 @@ Missing essential commands or unusable
 .IR /proc .
 .TP
 .B 2
-Invalid option.
+Invalid option or invalid option value.
 .SH OPTIONAL TOOLS
 Temperatures are read from sysfs when available;
 .BR sensors (1),

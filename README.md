@@ -101,6 +101,7 @@ pulse              # Start monitoring
 pulse -i 2         # Refresh every 2 seconds
 pulse --quiet      # Single-line mode
 pulse --once       # Print one line and exit
+pulse --no-intro   # Skip the start-up animation
 pulse --help       # Show help
 pulse --version    # Show version
 ```
@@ -129,6 +130,7 @@ pulse --once | grep -o 'RAM: *[0-9]*%'   # just the RAM field
 - `-q, --quiet` - Single-line minimal output
 - `-1, --once` - Print one quiet-mode line and exit
 - `-n, --no-color` - Disable colored output
+- `--no-intro` - Skip the start-up animation
 
 ## Environment Variables
 
@@ -141,7 +143,9 @@ NO_COLOR=1 pulse         # Same as --no-color
 ## Display modes
 
 - **Full dashboard** (Unicode + colours): used in any graphical session (X11/Wayland) and in UTF-8 terminals such as SSH or tmux sessions. It uses 256 colours when the terminal supports them, 16 otherwise.
-- **TTY mode** (ASCII): used on the Linux virtual console (`TERM=linux`) and in terminals that cannot draw Unicode.
+- **TTY mode** (pure ASCII): used on the Linux virtual console (`TERM=linux`) and in terminals that cannot draw Unicode. The system information is laid out to the right of the heart.
+
+If the terminal has fewer rows than the dashboard needs, the bottom lines are dropped so the screen never scrolls. The dashboard adapts when the window is resized.
 
 ## Requirements
 
@@ -151,7 +155,7 @@ NO_COLOR=1 pulse         # Same as --no-color
   - NVIDIA driver with `nvidia-smi` (NVIDIA GPU temperature)
   - `mesa-utils` / `glx-utils` (GPU name), `pciutils` (GPU name fallback)
   - `upower` (battery fallback; batteries are read from sysfs first)
-  - `xrandr` (screen resolution and refresh rate), `xdpyinfo` (resolution fallback)
+  - `xrandr` (screen resolution and refresh rate), `xdpyinfo` (resolution fallback), `gdbus` (resolution on GNOME, part of glib2 / `libglib2.0-bin`)
   - `procps` (`pgrep`/`ps`, used to detect the window manager and terminal)
 
 Package names differ between distributions, see the next section.

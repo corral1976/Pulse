@@ -1,13 +1,4 @@
 # SPDX-License-Identifier: MIT
-#
-# Generic install for any Linux distribution.
-#
-#   make install                              -> /usr/local (needs root)
-#   make install PREFIX=$$HOME/.local         -> per-user, no root
-#   make install PREFIX=/usr DESTDIR=pkgdir   -> for distro packagers
-#   make uninstall [PREFIX=...]
-#   make check                                -> syntax, shellcheck (if present) and smoke tests
-#   make deb                                  -> build the .deb (Debian/Ubuntu)
 
 PREFIX  ?= /usr/local
 DESTDIR ?=

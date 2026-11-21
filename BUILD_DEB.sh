@@ -1,25 +1,13 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-#
-# Build pulse-active_<version>_all.deb from the files in this repository.
-# Everything is staged in a temporary directory; the working tree is not modified.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 PACKAGE_NAME="pulse-active"
 ARCHITECTURE="all"
-VERSION="$(sed -n 's/^readonly SCRIPT_VERSION="\(.*\)"/\1/p' src/pulse)"
-OUTPUT_FILE="${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
-
-if [ -z "$VERSION" ]; then
-    echo "Error: could not read SCRIPT_VERSION from src/pulse" >&2
-    exit 1
-fi
 
 command -v dpkg-deb >/dev/null 2>&1 || { echo "Error: dpkg-deb is required (Debian/Ubuntu and derivatives)." >&2; exit 1; }
-
-echo "Building ${PACKAGE_NAME} version ${VERSION}..."
 
 echo "Checking sources..."
 for f in src/pulse man/pulse.1 data/pulse.svg data/pulse-active.desktop LICENSE README.md \
@@ -30,6 +18,22 @@ for f in src/pulse man/pulse.1 data/pulse.svg data/pulse-active.desktop LICENSE 
         exit 1
     fi
 done
+
+VERSION="$(sed -n 's/^readonly SCRIPT_VERSION="\(.*\)"/\1/p' src/pulse)"
+CHANGELOG_VERSION="$(sed -n '1s/^[^ ]* (\([^)]*\)).*/\1/p' packaging/debian/changelog)"
+OUTPUT_FILE="${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+
+if [ -z "$VERSION" ]; then
+    echo "Error: could not read SCRIPT_VERSION from src/pulse" >&2
+    exit 1
+fi
+
+if [ "$VERSION" != "$CHANGELOG_VERSION" ]; then
+    echo "Error: src/pulse is $VERSION but packaging/debian/changelog starts at ${CHANGELOG_VERSION:-unknown}" >&2
+    exit 1
+fi
+
+echo "Building ${PACKAGE_NAME} version ${VERSION}..."
 
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/pulse-deb.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT

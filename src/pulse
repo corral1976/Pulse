@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Carlos Corral - Pulse Active
 #
-# pulse - Universal Edition (TTY + GUI) system monitor
-#
-# Sin `set -e` a propósito: aquí muchos comandos fallan de forma normal
-# (grep sin resultados, herramientas opcionales que no están instaladas).
+# Sin set -e: varios comandos opcionales fallan de forma normal.
 set -uo pipefail
 
-readonly SCRIPT_VERSION="1.1.1"
+readonly SCRIPT_VERSION="1.1.2"
 readonly HEART_BEAT_1="0.10"
 readonly HEART_BEAT_2="0.12"
 readonly HEART_BEAT_3="0.10"
 readonly HEART_CYCLE_MS=320
 readonly HEART_REST_MIN_MS=100
+readonly BAR_WIDTH_GUI=35
+readonly BAR_WIDTH_TTY=20
+readonly TTY_FULL_ROWS=32
+readonly CACHE_TTL=5
+readonly BATTERY_CACHE_TTL=10
 
 REFRESH_INTERVAL=1
 QUIET_MODE=false
@@ -21,6 +23,7 @@ SHOW_HELP=false
 SHOW_VERSION=false
 NO_COLOR_FLAG=false
 ONCE_MODE=false
+NO_INTRO=false
 [ -n "${NO_COLOR:-}" ] && NO_COLOR_FLAG=true
 
 while [[ $# -gt 0 ]]; do
@@ -28,11 +31,11 @@ while [[ $# -gt 0 ]]; do
         -i|--interval)
             if [ $# -lt 2 ]; then
                 echo "Error: ${1} requires a value (seconds)" >&2
-                exit 1
+                exit 2
             fi
             if ! [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" -lt 1 ]; then
                 echo "Error: --interval must be a positive integer" >&2
-                exit 1
+                exit 2
             fi
             REFRESH_INTERVAL="$2"
             shift 2
@@ -48,6 +51,10 @@ while [[ $# -gt 0 ]]; do
         -1|--once)
             ONCE_MODE=true
             QUIET_MODE=true
+            shift
+            ;;
+        --no-intro)
+            NO_INTRO=true
             shift
             ;;
         -h|--help)
@@ -75,6 +82,7 @@ if [ "$SHOW_HELP" = true ]; then
     echo "  -q, --quiet             Quiet mode (single-line minimal output)"
     echo "  -n, --no-color          Disable colored output (plain text, even in GUI mode)"
     echo "  -1, --once              Print one quiet-mode line and exit (implies --quiet)"
+    echo "      --no-intro          Skip the start-up animation"
     echo "  -h, --help              Show this help message"
     echo "  -v, --version           Show version information"
     echo ""
@@ -93,13 +101,10 @@ if [ "$SHOW_VERSION" = true ]; then
     exit 0
 fi
 
-# Si la salida no es una terminal (pipe, archivo, cron) no dibujamos el dashboard.
 if [ ! -t 1 ]; then
     QUIET_MODE=true
 fi
 
-# Fabricante de la GPU según lspci. Sin lspci devuelve "unknown"
-# y así no avisamos de nvidia-smi por error.
 detect_gpu_vendor() {
     local pci_line=""
     if command -v lspci >/dev/null 2>&1; then
@@ -117,10 +122,7 @@ detect_gpu_vendor() {
 }
 
 check_dependencies() {
-    # Sin estos no funciona
     local required=(awk grep sed cut df date stat uname stty sleep)
-    # Opcionales: sin ellos solo se pierden algunos datos.
-    # nvidia-smi solo se revisa si hay una GPU NVIDIA.
     local optional=(sensors lspci glxinfo upower xrandr pgrep ps)
     local missing_required=()
     local missing_optional=()
@@ -150,25 +152,29 @@ check_dependencies() {
 check_dependencies
 
 detect_terminal() {
-    local term_type="unknown"
     local loc="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}"
 
-    # Consola de Linux o terminal básica: sin Unicode ni colores
     if [ "${TERM:-}" = "linux" ] || [ "${TERM:-}" = "dumb" ]; then
-        term_type="tty"
-    # Sesión gráfica: con que haya servidor basta, no exigimos xdpyinfo
+        echo "tty"
     elif [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ] \
          || [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ "${XDG_SESSION_TYPE:-}" = "x11" ]; then
-        term_type="gui"
-    # SSH, tmux, etc.: si el locale es UTF-8 se puede dibujar completo
-    # (se mira stderr porque aquí stdout es un pipe)
+        echo "gui"
+    # stderr, porque dentro de $(...) stdout es un pipe
     elif [ -t 2 ] && [[ "$loc" == *[Uu][Tt][Ff]-8* || "$loc" == *[Uu][Tt][Ff]8* ]]; then
-        term_type="gui"
-    elif [ -t 1 ] && [ -t 2 ]; then
-        term_type="tty"
+        echo "gui"
+    else
+        echo "tty"
     fi
+}
 
-    echo "$term_type"
+TERM_ROWS=0
+
+update_term_size() {
+    local rows
+    TERM_ROWS=0
+    if read -r rows _ < <(stty size 2>/dev/null) && [[ "$rows" =~ ^[0-9]+$ ]]; then
+        TERM_ROWS=$rows
+    fi
 }
 
 ORIGINAL_STTY=$(stty -g 2>/dev/null || echo "")
@@ -176,7 +182,7 @@ ALT_SCREEN=false
 
 cleanup() {
     local rc=$?
-    trap - INT TERM EXIT
+    trap - INT TERM HUP EXIT
     if [ "$ALT_SCREEN" = true ]; then
         printf "\e[?1049l\e[?25h\e[0m" 2>/dev/null || true
     fi
@@ -189,15 +195,21 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 TERM_TYPE=$(detect_terminal)
 
-# Colores reales del terminal. tput devuelve -1 si no sabe (TERM=dumb),
-# y en ese caso no usamos color.
 detect_color_support() {
-    local n=-1
+    local n=""
     if command -v tput >/dev/null 2>&1; then
-        n=$(tput colors 2>/dev/null || echo -1)
+        n=$(tput colors 2>/dev/null)
+    fi
+    if ! [[ "$n" =~ ^[0-9]+$ ]]; then
+        case "${COLORTERM:-}:${TERM:-}" in
+            ?*:*|*:*256color*) n=256 ;;
+            *:xterm*|*:screen*|*:tmux*|*:rxvt*|*:vt100*) n=16 ;;
+            *) n=-1 ;;
+        esac
     fi
     echo "$n"
 }
@@ -230,14 +242,21 @@ else
     COLOR_MODE="none"
 fi
 
-# Paleta pastel. Con menos de 256 colores usamos negritas ANSI;
-# sin color (TTY o --no-color) las variables quedan vacías.
+if [ "$QUIET_MODE" = false ]; then
+    update_term_size
+    trap update_term_size WINCH
+fi
+
+if [ -n "$ORIGINAL_STTY" ] && [ "$ONCE_MODE" = false ]; then
+    stty -echo 2>/dev/null
+fi
+
 if [ "$COLOR_MODE" = "256" ]; then
     RESET=$'\e[0m'
-    COL_G1=$'\e[1;38;5;117m'   # azul pastel  - user, uptime, display
-    COL_G2=$'\e[1;38;5;120m'   # verde pastel - distro, kernel, wm
-    COL_G3=$'\e[1;38;5;141m'   # lavanda      - desktop, term, shell
-    COL_G4=$'\e[1;38;5;215m'   # durazno      - apps, disk, OS Age
+    COL_G1=$'\e[1;38;5;117m'
+    COL_G2=$'\e[1;38;5;120m'
+    COL_G3=$'\e[1;38;5;141m'
+    COL_G4=$'\e[1;38;5;215m'
     COL_BAR_LOW=$'\e[38;5;120m'
     COL_BAR_MED=$'\e[38;5;222m'
     COL_BAR_HIGH=$'\e[38;5;210m'
@@ -276,10 +295,15 @@ if [ ! -d "$DISK_PATH" ]; then
     DISK_PATH="/"
 fi
 
-# Sin /proc no hay nada que monitorear, salimos.
 if [ ! -r /proc/stat ] || [ ! -r /proc/net/dev ] || [ ! -r /proc/meminfo ]; then
     echo "Error: /proc is not available or not readable. Pulse requires Linux with procfs mounted." >&2
     exit 1
+fi
+
+if (( BASH_VERSINFO[0] > 4 || ( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2 ) )); then
+    update_clock() { printf -v NOW_HMS '%(%H:%M:%S)T' -1; }
+else
+    update_clock() { NOW_HMS=$(date +'%H:%M:%S'); }
 fi
 
 get_package_count() {
@@ -320,7 +344,6 @@ get_package_count() {
 }
 
 detect_wm() {
-    # Busca el WM por proceso. La variable WM tiene prioridad.
     local candidates=(kwin_x11 kwin_wayland mutter gnome-shell xfwm4 i3 i3wm
                        sway bspwm openbox awesome herbstluftwm dwm fluxbox
                        icewm marco cinnamon budgie-wm Hyprland niri river labwc
@@ -345,8 +368,6 @@ detect_wm() {
 }
 
 detect_terminal_emulator() {
-    # En Linux casi ningún terminal exporta TERM_PROGRAM, así que
-    # primero miramos las variables de cada emulador.
     if [ -n "${KONSOLE_VERSION:-}" ]; then
         local kv="$KONSOLE_VERSION"
         if [[ "$kv" =~ ^[0-9]{6}$ ]]; then
@@ -376,8 +397,6 @@ detect_terminal_emulator() {
 }
 
 get_os_age() {
-    # Fecha de creación de /. Si el sistema no la da, stat devuelve 0
-    # y mostramos "unknown".
     local btime now days by bm bd ny nm nd months rem years
     btime=$(stat -c %W / 2>/dev/null)
     now=$(date +%s)
@@ -413,17 +432,17 @@ get_os_age() {
     fi
 }
 
-get_uptime() {
-    local up d h m
-    read -r up _ < /proc/uptime 2>/dev/null || { echo "Unknown"; return; }
-    up="${up%.*}"
+UPTIME="0m"
+
+set_uptime() {
+    local up="${1%.*}" d h m
     d=$(( up / 86400 )); h=$(( (up % 86400) / 3600 )); m=$(( (up % 3600) / 60 ))
     if [ "$d" -gt 0 ]; then
-        echo "${d}d ${h}h ${m}m"
+        UPTIME="${d}d ${h}h ${m}m"
     elif [ "$h" -gt 0 ]; then
-        echo "${h}h ${m}m"
+        UPTIME="${h}h ${m}m"
     else
-        echo "${m}m"
+        UPTIME="${m}m"
     fi
 }
 
@@ -452,7 +471,6 @@ get_resolution_mutter() {
     echo "$res"
 }
 
-# Resolución: xrandr -> xdpyinfo -> DRM. Si nada funciona, N/A.
 get_resolution() {
     local logical="" hz="" line c mode status out
 
@@ -496,8 +514,6 @@ get_resolution() {
     echo "$logical"
 }
 
-# Temperatura (°C) del primer hwmon cuyo nombre coincida con la regex $1.
-# Lee sysfs directo, no necesita lm-sensors.
 hwmon_temp() {
     local h name t
     for h in /sys/class/hwmon/hwmon*; do
@@ -513,19 +529,21 @@ hwmon_temp() {
     return 1
 }
 
-# Suma bytes rx/tx de todas las interfaces menos lo.
-net_totals() {
-    awk 'NR > 2 {
-        i = index($0, ":"); if (i == 0) next
-        name = substr($0, 1, i - 1); gsub(/ /, "", name)
-        if (name == "lo") next
-        split(substr($0, i + 1), f, " ")
-        rx += f[1]; tx += f[9]
-    } END { printf "%.0f %.0f\n", rx, tx }' /proc/net/dev 2>/dev/null
+NET_RX=0
+NET_TX=0
+
+read_net_totals() {
+    local iface rx tx
+    NET_RX=0
+    NET_TX=0
+    while IFS=': ' read -r iface rx _ _ _ _ _ _ _ tx _; do
+        [[ "$rx" =~ ^[0-9]+$ ]] || continue
+        [ "$iface" = "lo" ] && continue
+        NET_RX=$(( NET_RX + rx ))
+        NET_TX=$(( NET_TX + tx ))
+    done < /proc/net/dev
 }
 
-# Espera N segundos. Devuelve 0 si hay que salir (tecla o EOF en stdin).
-# Si stdin no es terminal duerme normal, para no quemar CPU.
 wait_or_key() {
     local secs="$1" rc
     if [ -t 0 ]; then
@@ -534,8 +552,6 @@ wait_or_key() {
         [ "$rc" -eq 0 ] && return 0
         [ "$rc" -gt 128 ] && return 1
     else
-        # Sin terminal: si stdin ya está cerrado (< /dev/null) salimos;
-        # con un pipe abierto solo dormimos.
         read -r -t 0.05 -n 1 _
         rc=$?
         [ "$rc" -eq 1 ] && return 0
@@ -576,7 +592,6 @@ get_de() {
 OS=$(grep -m1 '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
 OS="${OS:-Unknown}"
 KERNEL=$(uname -r)
-UPTIME="$(get_uptime)"
 RES="$(get_resolution)"
 DE="$(get_de)"
 USER_N="${USER:-$(id -un 2>/dev/null || echo unknown)}"
@@ -692,7 +707,6 @@ get_gpu_name() {
     echo "${name:-Unknown GPU}"
 }
 
-# Corta "$1" a "$2" caracteres sin partir palabras.
 truncate_at_word() {
     local str="$1"
     local max="$2"
@@ -710,19 +724,37 @@ truncate_at_word() {
     echo "$cut"
 }
 
-PREV_T=0; PREV_I=0; PREV_RX=0; PREV_TX=0
+PREV_CPU_TOTAL=0
+PREV_CPU_IDLE=0
+PREV_RX=0
+PREV_TX=0
+PREV_UP="0.00"
+NOW_UP="0.00"
+CPU_TOTAL=0
+CPU_IDLE=0
+CPU=0
+RAM_P=0
+RAM_STR="0.00/0.00 GiB"
+CPU_FREQ_DISP="N/A"
+DL=0
+UL=0
+PERCENT=0
 BAR_OUT=""
 GRAPH_OUT=""
 FRAME=""
+FRAME_LINES=0
+GUI_TAIL_LINES=0
 GUI_TAIL=""
 NOW_HMS=""
+GUI_ROWS=()
+TTY_ROWS=()
+TTY_HEADER=()
+INTRO_SKIP=false
 CPU_HISTORY=(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
 CPU_M=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo 2>/dev/null | sed -e 's/^[ \t]*//;s/ with.*//;s/ @ .*//')
 CPU_M="${CPU_M:-Unknown CPU}"
 CPU_M="$(truncate_at_word "$CPU_M" 35)"
 
-# Datos lentos (sensores, disco, batería): se refrescan cada CACHE_TTL
-# segundos desde el shell principal. Dentro de $(...) el caché se perdía.
 SENSORS_CACHE=""
 NVIDIA_CACHE=""
 CPU_TEMP_DISP="N/A"
@@ -733,54 +765,82 @@ DISK_P=0
 BATTERY_INFO="No Battery"
 SLOW_TS=-1000
 BATTERY_TS=-1000
-CACHE_TTL=5
-BATTERY_CACHE_TTL=10
 
 GPU_M="$(get_gpu_name)"
 GPU_M="${GPU_M:-Unknown GPU}"
 GPU_M="$(truncate_at_word "$GPU_M" 35)"
 
-draw_bar() {
-    local pct=$1
-    local len=${2:-35}
-    local fill=$(( pct * len / 100 ))
-    local i bar_char empty_char bar_color
+HEART_FULL=(
+    " .MMMM.  .MMMM. "
+    ".MMMMMM..MMMMMM."
+    "MMMMMMMMMMMMMMMM"
+    "MMMMMMMMMMMMMMMM"
+    "'MMMMMMMMMMMMMM'"
+    "  'MMMMMMMMMM'  "
+    "    'MMMMMM'    "
+    "      'MM'      "
+    "  PULSE-ACTIVE  "
+)
 
-    BAR_OUT=""
-    if [ "$TERM_TYPE" = "gui" ] && $USE_COLORS; then
-        bar_color="$COL_BAR_LOW"
-        if [ "$pct" -ge 85 ]; then
-            bar_color="$COL_BAR_HIGH"
-        elif [ "$pct" -ge 60 ]; then
-            bar_color="$COL_BAR_MED"
-        fi
-        for ((i=0; i<fill; i++)); do BAR_OUT+="${bar_color}█"; done
-        for ((i=fill; i<len; i++)); do BAR_OUT+="${COL_BAR_EMPTY}▒"; done
-        BAR_OUT+="$RESET"
+HEART_LIGHT=(
+    " .::::.  .::::. "
+    ".::::::..::::::."
+    "::::::::::::::::"
+    "::::::::::::::::"
+    "'::::::::::::::'"
+    "  '::::::::::'  "
+    "    '::::::'    "
+    "      '::'      "
+    "  PULSE-ACTIVE  "
+)
+
+calc_percent() {
+    if [ "$2" -le 0 ] || [ "$1" -le 0 ]; then
+        PERCENT=0
     else
-        bar_char="#"
-        empty_char="."
-
-        if [ "$pct" -ge 80 ]; then
-            bar_char="!"
-        elif [ "$pct" -ge 60 ]; then
-            bar_char="*"
-        elif [ "$pct" -ge 40 ]; then
-            bar_char="+"
-        elif [ "$pct" -ge 20 ]; then
-            bar_char="-"
-        else
-            bar_char="|"
-        fi
-
-        for ((i=0; i<fill; i++)); do BAR_OUT+="$bar_char"; done
-        for ((i=fill; i<len; i++)); do BAR_OUT+="$empty_char"; done
-        BAR_OUT+=" [${pct}%]"
+        PERCENT=$(( $1 * 100 / $2 ))
+        (( PERCENT > 100 )) && PERCENT=100
     fi
 }
 
-# El historial no es uso crudo: se suaviza y se multiplica x3
-# para que se noten los picos chicos.
+draw_bar() {
+    local pct=$1
+    local len=${2:-$BAR_WIDTH_GUI}
+    local fill=$(( pct * len / 100 ))
+    local i filled="" empty="" fill_char empty_char
+    local fill_color="" empty_color="" end_color=""
+
+    if [ "$TERM_TYPE" = "gui" ] && $USE_COLORS; then
+        fill_color="$COL_BAR_LOW"
+        if [ "$pct" -ge 85 ]; then
+            fill_color="$COL_BAR_HIGH"
+        elif [ "$pct" -ge 60 ]; then
+            fill_color="$COL_BAR_MED"
+        fi
+        empty_color="$COL_BAR_EMPTY"
+        end_color="$RESET"
+        fill_char="█"
+        empty_char="▒"
+    else
+        empty_char="."
+        if [ "$pct" -ge 80 ]; then
+            fill_char="!"
+        elif [ "$pct" -ge 60 ]; then
+            fill_char="*"
+        elif [ "$pct" -ge 40 ]; then
+            fill_char="+"
+        elif [ "$pct" -ge 20 ]; then
+            fill_char="-"
+        else
+            fill_char="|"
+        fi
+    fi
+
+    for (( i = 0; i < fill; i++ )); do filled+="$fill_char"; done
+    for (( i = fill; i < len; i++ )); do empty+="$empty_char"; done
+    BAR_OUT="${fill_color}${filled}${empty_color}${empty}${end_color}"
+}
+
 draw_graph() {
     local val b
     local -a chars
@@ -791,9 +851,9 @@ draw_graph() {
         for val in "${CPU_HISTORY[@]}"; do
             b=$(( val * 3 ))
             (( b > 100 )) && b=100
-            GRAPH_OUT+="${COL_GRAPH}${chars[$(( b * 8 / 100 ))]}"
+            GRAPH_OUT+="${chars[$(( b * 8 / 100 ))]}"
         done
-        GRAPH_OUT+="$RESET"
+        GRAPH_OUT="${COL_GRAPH}${GRAPH_OUT}${RESET}"
     else
         for val in "${CPU_HISTORY[@]}"; do
             if [ "$val" -lt 10 ]; then
@@ -830,27 +890,6 @@ format_temp() {
     fi
 }
 
-safe_div() {
-    local numerator=$1
-    local denominator=$2
-    [ "$denominator" -eq 0 ] && echo "0" || echo $(( numerator * 100 / denominator ))
-}
-
-# Corazón del modo TTY, compartido por la intro y el dashboard.
-TTY_HEART=(
-    "       .MMMM.  .MMMM. "
-    "      .MMMMMM..MMMMMM."
-    "      MMMMMMMMMMMMMMMM"
-    "      MMMMMMMMMMMMMMMM"
-    "      'MMMMMMMMMMMMMM'"
-    "        'MMMMMMMMMM'  "
-    "          'MMMMMM'    "
-    "            'MM'      "
-    "        PULSE-ACTIVE  "
-)
-
-# Refresca lo costoso (sensores, nvidia-smi, df, batería) una vez por TTL.
-# Llamar desde el shell principal, no dentro de $(...).
 refresh_slow_metrics() {
     if [ $(( SECONDS - SLOW_TS )) -ge "$CACHE_TTL" ]; then
         SLOW_TS=$SECONDS
@@ -870,120 +909,216 @@ refresh_slow_metrics() {
     fi
 }
 
-# Intro tipo demoscene: escribe el arte y los datos fijos letra por letra.
-# Se salta con --quiet o con cualquier tecla.
-play_intro() {
-    [ "$QUIET_MODE" = true ] && return
+read_cpu_ticks() {
+    local cpu_user cpu_nice cpu_system cpu_idle cpu_iowait cpu_irq cpu_softirq cpu_steal
+    read -r _ cpu_user cpu_nice cpu_system cpu_idle cpu_iowait cpu_irq cpu_softirq cpu_steal _ < /proc/stat 2>/dev/null || return 1
+    CPU_TOTAL=$(( cpu_user + cpu_nice + cpu_system + cpu_idle + cpu_iowait + cpu_irq + cpu_softirq + cpu_steal ))
+    CPU_IDLE=$(( cpu_idle + cpu_iowait ))
+}
 
-    local skip=false
-    local now_ts
-    now_ts=$(date +'%H:%M:%S')
+read_cpu_freq() {
+    local freq="" scaling=/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
 
-    # Escribe "$1" letra por letra (color "$2" opcional). Con una tecla
-    # se imprime todo de golpe.
-    _intro_type_line() {
-        local text="$1" color="${2:-}" i char
-        [ -n "$color" ] && printf "%s" "$color"
-        if [ "$skip" = true ]; then
-            printf "%s" "$text"
+    if [ -r "$scaling" ]; then
+        read -r freq < "$scaling" 2>/dev/null
+        if [[ "$freq" =~ ^[0-9]+$ ]]; then
+            freq=$(( freq / 1000 ))
         else
-            for (( i = 0; i < ${#text}; i++ )); do
-                char="${text:i:1}"
-                printf "%s" "$char"
-                read -r -t 0.004 -n 1 _ 2>/dev/null && skip=true
-            done
+            freq=""
         fi
-        [ -n "$color" ] && printf "%s" "$RESET"
-        printf "\n"
-    }
-
-    if [ "$TERM_TYPE" = "gui" ]; then
-        printf "\e[H\e[J\n"
-
-        # Mismos printf del dashboard pero sin colores, para que quede igual.
-        # ${C:-} porque C aún no existe y con `set -u` fallaría.
-        local C_bak="${C:-}" RESET_bak="$RESET" COL_DIM_bak="$COL_DIM" COL_WHITE_bak="$COL_WHITE"
-        local COL_G1_bak="$COL_G1" COL_G2_bak="$COL_G2" COL_G3_bak="$COL_G3" COL_G4_bak="$COL_G4"
-        C=""; RESET=""; COL_DIM=""; COL_WHITE=""; COL_G1=""; COL_G2=""; COL_G3=""; COL_G4=""
-
-        # DISK_P aún no existe, tomamos una muestra.
-        local disk_p_now
-        read -r _ _ disk_p_now < <(get_disk_info "$DISK_PATH")
-        disk_p_now="${disk_p_now:-0}"
-
-        local l01 l02 l03 l04 l05 l06 l07 l08 l09 l10 l11 l12
-        l01=$(printf "      ${C} .MMMM.  .MMMM. ${RESET}    ${COL_G1}> user    ${COL_DIM}│ ${RESET}%s" "$USER_N")
-        l02=$(printf "      ${C}.MMMMMM..MMMMMM.${RESET}    ${COL_G1}> uptime  ${COL_DIM}│ ${RESET}%s" "$UPTIME")
-        l03=$(printf "      ${C}MMMMMMMMMMMMMMMM${RESET}    ${COL_G1}> display ${COL_DIM}│ ${RESET}%s" "$RES")
-        l04=$(printf "      ${C}MMMMMMMMMMMMMMMM${RESET}    ${COL_G2}> distro  ${COL_DIM}│ ${RESET}%s" "$OS")
-        l05=$(printf "      ${C}'MMMMMMMMMMMMMM'${RESET}    ${COL_G2}> kernel  ${COL_DIM}│ ${RESET}%s" "$KERNEL")
-        l06=$(printf "      ${C}  'MMMMMMMMMM'  ${RESET}    ${COL_G2}> wm      ${COL_DIM}│ ${RESET}%s" "$WM")
-        l07=$(printf "      ${C}    'MMMMMM'    ${RESET}    ${COL_G3}> desktop ${COL_DIM}│ ${RESET}%s" "$DE")
-        l08=$(printf "      ${C}      'MM'      ${RESET}    ${COL_G3}> term    ${COL_DIM}│ ${RESET}%s" "$TERM_N")
-        l09=$(printf "      ${C}  PULSE-ACTIVE  ${RESET}    ${COL_G3}> shell   ${COL_DIM}│ ${RESET}%s" "$SHELL_V")
-        l10=$(printf "      ${COL_WHITE}   [%s]${RESET}       ${COL_G4}> apps    ${COL_DIM}│ ${RESET}%s" "$now_ts" "$PKGS")
-        l11=$(printf "      ${COL_DIM}----------------${RESET}    ${COL_G4}> disk    ${COL_DIM}│ ${RESET}%s%%" "$disk_p_now")
-        l12=$(printf "                        ${COL_G4}  > OS Age  ${COL_DIM}│ ${RESET}%s" "$OS_AGE")
-
-        C="$C_bak"; RESET="$RESET_bak"; COL_DIM="$COL_DIM_bak"; COL_WHITE="$COL_WHITE_bak"
-        COL_G1="$COL_G1_bak"; COL_G2="$COL_G2_bak"; COL_G3="$COL_G3_bak"; COL_G4="$COL_G4_bak"
-
-        _intro_type_line "$l01" "$COL_WHITE"
-        _intro_type_line "$l02" "$COL_WHITE"
-        _intro_type_line "$l03" "$COL_WHITE"
-        _intro_type_line "$l04" "$COL_WHITE"
-        _intro_type_line "$l05" "$COL_WHITE"
-        _intro_type_line "$l06" "$COL_WHITE"
-        _intro_type_line "$l07" "$COL_WHITE"
-        _intro_type_line "$l08" "$COL_WHITE"
-        _intro_type_line "$l09" "$COL_WHITE"
-        _intro_type_line "$l10" "$COL_G4"
-        _intro_type_line "$l11" "$COL_G4"
-        _intro_type_line "$l12" "$COL_G4"
-    else
-        printf '\e[H\e[2J'
-
-        # Igual que arriba, con las líneas del modo TTY.
-        local -a ttylines=()
-        ttylines+=("$(printf "╔════════════════════════════════════════════════════════════════╗")")
-        ttylines+=("$(printf "║                    PULSE-ACTIVE (TTY Mode)                     ║")")
-        ttylines+=("$(printf "║                    Universal Edition v%-25s║" "${SCRIPT_VERSION}")")
-        ttylines+=("$(printf "╚════════════════════════════════════════════════════════════════╝")")
-        ttylines+=("")
-        ttylines+=("${TTY_HEART[@]}")
-        ttylines+=("$(printf "         [%s]" "$now_ts")")
-        ttylines+=("")
-        ttylines+=("$(printf "SYSTEM INFO:")")
-        ttylines+=("$(printf "  User: %s" "${USER_N}")")
-        ttylines+=("$(printf "  Time: %s" "$(date +'%H:%M')")")
-        ttylines+=("$(printf "  Shell: %s" "${SHELL_V##*/}")")
-        ttylines+=("$(printf "  Host: %s" "$HOST_N")")
-        ttylines+=("$(printf "  Uptime: %s" "${UPTIME}")")
-        ttylines+=("$(printf "  Kernel: %s" "${KERNEL}")")
-        ttylines+=("$(printf "  OS: %s" "${OS}")")
-        ttylines+=("$(printf "  Apps: %s" "${PKGS}")")
-        ttylines+=("$(printf "  OS Age: %s" "${OS_AGE}")")
-
-        local tline
-        for tline in "${ttylines[@]}"; do
-            _intro_type_line "$tline" ""
-        done
     fi
+    if [ -z "$freq" ]; then
+        freq=$(awk -F: '/cpu MHz/ {printf "%d", $2; exit}' /proc/cpuinfo 2>/dev/null)
+    fi
+    if [ -z "$freq" ]; then
+        CPU_FREQ_DISP="N/A"
+    else
+        CPU_FREQ_DISP="${freq} MHz"
+    fi
+}
 
-    # Pausa corta antes del dashboard (también se salta con tecla).
-    [ "$skip" = false ] && read -r -t 0.5 -n 1 _ 2>/dev/null
+update_cpu_history() {
+    local last delta peak smooth
+    last=${CPU_HISTORY[$(( ${#CPU_HISTORY[@]} - 1 ))]}
+    delta=$(( CPU - last ))
+    peak=$CPU
+    if (( delta > 5 )); then
+        peak=$(( CPU + delta * 2 ))
+    elif (( delta < -5 )); then
+        peak=$(( CPU + delta ))
+    fi
+    (( peak < 0 )) && peak=0
+    (( peak > 100 )) && peak=100
+    smooth=$(( (last * 60 + peak * 40) / 100 ))
+    CPU_HISTORY=("${CPU_HISTORY[@]:1}" "$smooth")
+}
 
-    unset -f _intro_type_line
+read_memory() {
+    local key value mem_total=0 mem_free=0 mem_avail=0 buffers=0 cached=0
+    local used_kib used_centi total_centi
+
+    while read -r key value _; do
+        case "$key" in
+            MemTotal:)     mem_total=$value ;;
+            MemFree:)      mem_free=$value ;;
+            MemAvailable:) mem_avail=$value ;;
+            Buffers:)      buffers=$value ;;
+            Cached:)       cached=$value; break ;;
+        esac
+    done < /proc/meminfo
+
+    (( mem_avail == 0 )) && mem_avail=$(( mem_free + buffers + cached ))
+    used_kib=$(( mem_total - mem_avail ))
+    calc_percent "$used_kib" "$mem_total"
+    RAM_P=$PERCENT
+    used_centi=$(( (used_kib * 100 + 524288) / 1048576 ))
+    total_centi=$(( (mem_total * 100 + 524288) / 1048576 ))
+    printf -v RAM_STR '%d.%02d/%d.%02d GiB' \
+        $(( used_centi / 100 )) $(( used_centi % 100 )) $(( total_centi / 100 )) $(( total_centi % 100 ))
+}
+
+update_net_rates() {
+    local now_cs prev_cs elapsed_cs
+    now_cs=$(( 10#${NOW_UP/./} ))
+    prev_cs=$(( 10#${PREV_UP/./} ))
+    elapsed_cs=$(( now_cs - prev_cs ))
+    (( elapsed_cs <= 0 )) && elapsed_cs=100
+    DL=$(( (NET_RX - PREV_RX) * 100 / (1024 * elapsed_cs) ))
+    UL=$(( (NET_TX - PREV_TX) * 100 / (1024 * elapsed_cs) ))
+    (( DL < 0 )) && DL=0
+    (( UL < 0 )) && UL=0
+}
+
+fit_frame() {
+    local count="$1"
+    [ "$TERM_ROWS" -gt 0 ] || return 0
+    while (( count > TERM_ROWS )); do
+        FRAME="${FRAME%$'\n'}"
+        FRAME="${FRAME%$'\n'*}"$'\n'
+        (( count-- ))
+    done
 }
 
 frame_line() {
     local text
     printf -v text "$@"
     FRAME+="${text}"$'\e[K\n'
+    (( FRAME_LINES++ ))
+}
+
+fill_gui_rows() {
+    local mode="$1" heart_mode="$2" hcolor="$3"
+    local g1="$COL_G1" g2="$COL_G2" g3="$COL_G3" g4="$COL_G4"
+    local dim="$COL_DIM" white="$COL_WHITE" reset="$RESET"
+    local i
+    local -a art keys values tones
+
+    if [ "$mode" = "plain" ]; then
+        g1=""; g2=""; g3=""; g4=""; dim=""; white=""; reset=""; hcolor=""
+    fi
+    if [ "$heart_mode" = "full" ]; then
+        art=("${HEART_FULL[@]}")
+    else
+        art=("${HEART_LIGHT[@]}")
+    fi
+    keys=(user uptime display distro kernel wm desktop term shell)
+    values=("$USER_N" "$UPTIME" "$RES" "$OS" "$KERNEL" "$WM" "$DE" "$TERM_N" "$SHELL_V")
+    tones=("$g1" "$g2" "$g3")
+
+    for (( i = 0; i < 9; i++ )); do
+        printf -v "GUI_ROWS[$i]" '      %s%s%s    %s> %-8s%s│ %s%s' \
+            "$hcolor" "${art[i]}" "$reset" "${tones[i / 3]}" "${keys[i]}" "$dim" "$reset" "${values[i]}"
+    done
+    printf -v "GUI_ROWS[9]" '      %s   [%s]%s       %s> apps    %s│ %s%s' \
+        "$white" "$NOW_HMS" "$reset" "$g4" "$dim" "$reset" "$PKGS"
+    printf -v "GUI_ROWS[10]" '      %s----------------%s    %s> disk    %s│ %s%s%%' \
+        "$dim" "$reset" "$g4" "$dim" "$reset" "$DISK_P"
+    printf -v "GUI_ROWS[11]" '                        %s  > OS Age  %s│ %s%s' \
+        "$g4" "$dim" "$reset" "$OS_AGE"
+}
+
+build_tty_header() {
+    local border
+    printf -v border '+%64s+' ''
+    border="${border// /-}"
+    TTY_HEADER=("$border")
+    printf -v "TTY_HEADER[1]" '|%20s%-44s|' '' 'PULSE-ACTIVE (TTY Mode)'
+    printf -v "TTY_HEADER[2]" '|%20s%-44s|' '' "Universal Edition v${SCRIPT_VERSION}"
+    TTY_HEADER[3]="$border"
+}
+
+fill_tty_rows() {
+    local i art_line side
+    local -a labels values
+
+    labels=(User Time Shell Host Uptime Kernel OS Apps "OS Age")
+    values=("$USER_N" "${NOW_HMS%:*}" "$SHELL_V" "$HOST_N" "$UPTIME" "$KERNEL" "$OS" "$PKGS" "$OS_AGE")
+
+    for (( i = 0; i < 10; i++ )); do
+        if (( i < 9 )); then
+            art_line="${HEART_FULL[i]}"
+        else
+            printf -v art_line '   [%s]' "$NOW_HMS"
+        fi
+        if (( i == 0 )); then
+            side="SYSTEM INFO:"
+        else
+            printf -v side '%-7s: %.40s' "${labels[i - 1]}" "${values[i - 1]}"
+        fi
+        printf -v "TTY_ROWS[$i]" '      %-16s    %s' "$art_line" "$side"
+    done
+}
+
+type_line() {
+    local text="$1" color="${2:-}" i
+
+    [ -n "$color" ] && printf '%s' "$color"
+    if [ "$INTRO_SKIP" = true ]; then
+        printf '%s' "$text"
+    else
+        for (( i = 0; i < ${#text}; i++ )); do
+            printf '%s' "${text:i:1}"
+            if read -r -t 0.004 -n 1 _ 2>/dev/null; then
+                INTRO_SKIP=true
+                printf '%s' "${text:i+1}"
+                break
+            fi
+        done
+    fi
+    [ -n "$color" ] && printf '%s' "$RESET"
+    printf '\n'
+}
+
+play_intro() {
+    [ "$QUIET_MODE" = true ] && return
+    [ "$NO_INTRO" = true ] && return
+
+    local i line color
+
+    update_clock
+
+    if [ "$TERM_TYPE" = "gui" ]; then
+        printf '\e[H\e[J\n'
+        read -r _ _ DISK_P < <(get_disk_info "$DISK_PATH")
+        fill_gui_rows plain full ""
+        for (( i = 0; i < ${#GUI_ROWS[@]}; i++ )); do
+            if (( i < 9 )); then color="$COL_WHITE"; else color="$COL_G4"; fi
+            type_line "${GUI_ROWS[i]}" "$color"
+        done
+    else
+        printf '\e[H\e[J'
+        fill_tty_rows
+        for line in "${TTY_HEADER[@]}" "" "${TTY_ROWS[@]}"; do
+            type_line "$line" ""
+        done
+    fi
+
+    [ "$INTRO_SKIP" = false ] && read -r -t 0.5 -n 1 _ 2>/dev/null
 }
 
 build_gui_tail() {
     FRAME=""
+    FRAME_LINES=0
     frame_line ''
     draw_bar "$CPU"
     frame_line '    %sCPU %s %3d%% %s  %s%s%s' "$COL_G1" "$RESET" "$CPU" "$BAR_OUT" "$COL_DIM" "$CPU_FREQ_DISP" "$RESET"
@@ -1003,36 +1138,19 @@ build_gui_tail() {
     frame_line '  %sRepository: %shttps://github.com/corral1976/Pulse%s' "$COL_DIM" "$COL_G1" "$RESET"
     frame_line '  %sSupport: %shttps://ko-fi.com/retrolcdclock%s' "$COL_DIM" "$COL_G1" "$RESET"
     GUI_TAIL="$FRAME"
+    GUI_TAIL_LINES=$FRAME_LINES
 }
 
 build_gui_frame() {
-    local heart_mode="$1" hcolor="$2"
-    local h1 h2 h3 h4 h5 h6 h7 h8
+    local row
 
-    if [ "$heart_mode" = "full" ]; then
-        h1=" .MMMM.  .MMMM. "; h2=".MMMMMM..MMMMMM."; h3="MMMMMMMMMMMMMMMM"
-        h4="MMMMMMMMMMMMMMMM"; h5="'MMMMMMMMMMMMMM'"; h6="  'MMMMMMMMMM'  "
-        h7="    'MMMMMM'    "; h8="      'MM'      "
-    else
-        h1=" .::::.  .::::. "; h2=".::::::..::::::."; h3="::::::::::::::::"
-        h4="::::::::::::::::"; h5="'::::::::::::::'"; h6="  '::::::::::'  "
-        h7="    '::::::'    "; h8="      '::'      "
-    fi
-
+    fill_gui_rows color "$1" "$2"
     FRAME=$'\e[K\n'
-    frame_line '      %s%s%s    %s> user    %s│ %s%s' "$hcolor" "$h1" "$RESET" "$COL_G1" "$COL_DIM" "$RESET" "$USER_N"
-    frame_line '      %s%s%s    %s> uptime  %s│ %s%s' "$hcolor" "$h2" "$RESET" "$COL_G1" "$COL_DIM" "$RESET" "$UPTIME"
-    frame_line '      %s%s%s    %s> display %s│ %s%s' "$hcolor" "$h3" "$RESET" "$COL_G1" "$COL_DIM" "$RESET" "$RES"
-    frame_line '      %s%s%s    %s> distro  %s│ %s%s' "$hcolor" "$h4" "$RESET" "$COL_G2" "$COL_DIM" "$RESET" "$OS"
-    frame_line '      %s%s%s    %s> kernel  %s│ %s%s' "$hcolor" "$h5" "$RESET" "$COL_G2" "$COL_DIM" "$RESET" "$KERNEL"
-    frame_line '      %s%s%s    %s> wm      %s│ %s%s' "$hcolor" "$h6" "$RESET" "$COL_G2" "$COL_DIM" "$RESET" "$WM"
-    frame_line '      %s%s%s    %s> desktop %s│ %s%s' "$hcolor" "$h7" "$RESET" "$COL_G3" "$COL_DIM" "$RESET" "$DE"
-    frame_line '      %s%s%s    %s> term    %s│ %s%s' "$hcolor" "$h8" "$RESET" "$COL_G3" "$COL_DIM" "$RESET" "$TERM_N"
-    frame_line '      %s  PULSE-ACTIVE  %s    %s> shell   %s│ %s%s' "$hcolor" "$RESET" "$COL_G3" "$COL_DIM" "$RESET" "$SHELL_V"
-    frame_line '      %s   [%s]%s       %s> apps    %s│ %s%s' "$COL_WHITE" "$NOW_HMS" "$RESET" "$COL_G4" "$COL_DIM" "$RESET" "$PKGS"
-    frame_line '      %s----------------%s    %s> disk    %s│ %s%s%%' "$COL_DIM" "$RESET" "$COL_G4" "$COL_DIM" "$RESET" "$DISK_P"
-    frame_line '                        %s  > OS Age  %s│ %s%s' "$COL_G4" "$COL_DIM" "$RESET" "$OS_AGE"
+    for row in "${GUI_ROWS[@]}"; do
+        FRAME+="${row}"$'\e[K\n'
+    done
     FRAME+="$GUI_TAIL"
+    fit_frame $(( ${#GUI_ROWS[@]} + 1 + GUI_TAIL_LINES ))
     FRAME="${FRAME%$'\n'}"
 }
 
@@ -1041,62 +1159,58 @@ emit_gui_frame() {
 }
 
 build_tty_frame() {
-    local heart_line
+    local line
 
     FRAME=""
-    frame_line '╔════════════════════════════════════════════════════════════════╗'
-    frame_line '║                    PULSE-ACTIVE (TTY Mode)                     ║'
-    frame_line '║                    Universal Edition v%-25s║' "$SCRIPT_VERSION"
-    frame_line '╚════════════════════════════════════════════════════════════════╝'
-    frame_line ''
-    for heart_line in "${TTY_HEART[@]}"; do
-        frame_line '%s' "$heart_line"
+    FRAME_LINES=0
+    if [ "$TERM_ROWS" -eq 0 ] || [ "$TERM_ROWS" -ge "$TTY_FULL_ROWS" ]; then
+        for line in "${TTY_HEADER[@]}"; do
+            frame_line '%s' "$line"
+        done
+        frame_line ''
+    fi
+    fill_tty_rows
+    for line in "${TTY_ROWS[@]}"; do
+        frame_line '%s' "$line"
     done
-    frame_line '         [%s]' "$NOW_HMS"
-    frame_line ''
-    frame_line 'SYSTEM INFO:'
-    frame_line '  User: %s' "$USER_N"
-    frame_line '  Time: %s' "${NOW_HMS%:*}"
-    frame_line '  Shell: %s' "${SHELL_V##*/}"
-    frame_line '  Host: %s' "$HOST_N"
-    frame_line '  Uptime: %s' "$UPTIME"
-    frame_line '  Kernel: %s' "$KERNEL"
-    frame_line '  OS: %s' "$OS"
-    frame_line '  Apps: %s' "$PKGS"
-    frame_line '  OS Age: %s' "$OS_AGE"
     frame_line ''
     frame_line 'PERFORMANCE METRICS:'
-    draw_bar "$CPU" 20
-    frame_line '  CPU: %3d%% %-20s %9s' "$CPU" "$BAR_OUT" "$CPU_FREQ_DISP"
-    draw_bar "$RAM_P" 20
-    frame_line '  RAM: %3d%% %-20s %5s GiB' "$RAM_P" "$BAR_OUT" "${RAM_STR%%/*}"
-    draw_bar "$DISK_P" 20
-    frame_line '  DSK: %3d%% %-20s %4s/%4s' "$DISK_P" "$BAR_OUT" "$DISK_USED" "$DISK_TOTAL"
+    draw_bar "$CPU" "$BAR_WIDTH_TTY"
+    frame_line '  CPU: %3d%% %s %9s' "$CPU" "$BAR_OUT" "$CPU_FREQ_DISP"
+    draw_bar "$RAM_P" "$BAR_WIDTH_TTY"
+    frame_line '  RAM: %3d%% %s %5s GiB' "$RAM_P" "$BAR_OUT" "${RAM_STR%%/*}"
+    draw_bar "$DISK_P" "$BAR_WIDTH_TTY"
+    frame_line '  DSK: %3d%% %s %4s/%4s' "$DISK_P" "$BAR_OUT" "$DISK_USED" "$DISK_TOTAL"
     frame_line ''
     frame_line 'TEMPERATURES & HARDWARE:'
-    frame_line '  CPU: %s @ %s' "$CPU_M" "$CPU_TEMP_DISP"
-    frame_line '  GPU: %s @ %s' "$GPU_M" "$GPU_TEMP_DISP"
+    frame_line '  CPU: %s @ %s' "$CPU_M" "${CPU_TEMP_DISP/°C/C}"
+    frame_line '  GPU: %s @ %s' "$GPU_M" "${GPU_TEMP_DISP/°C/C}"
     frame_line '  Battery: %s' "$BATTERY_INFO"
     frame_line ''
     frame_line 'NETWORK & HISTORY:'
     draw_graph
-    frame_line '  Net: Down:%7s KB/s │ Up:%7s KB/s │ History: %-18s' "$DL" "$UL" "$GRAPH_OUT"
+    frame_line '  Net: Down:%7s KB/s | Up:%7s KB/s | History: %s' "$DL" "$UL" "$GRAPH_OUT"
     frame_line ''
     frame_line 'Pulse-Active v%s - Universal Monitor - TTY Mode - Carlos Corral 2026' "$SCRIPT_VERSION"
     frame_line 'GitHub: https://github.com/corral1976/Pulse'
     frame_line 'Support: https://ko-fi.com/retrolcdclock'
+    fit_frame "$FRAME_LINES"
+    FRAME="${FRAME%$'\n'}"
 }
 
 emit_tty_frame() {
     printf '\e[H%s\e[J' "$FRAME"
 }
 
-# Primera lectura antes de la intro, para que el primer cuadro no muestre
-# el promedio desde el arranque.
-read -r _ u n s i w x y z _ < /proc/stat
-PREV_T=$((u+n+s+i+w+x+y+z)); PREV_I=$((i+w))
-read -r PREV_RX PREV_TX < <(net_totals)
-read -r PREV_UP _ < /proc/uptime
+read_cpu_ticks
+PREV_CPU_TOTAL=$CPU_TOTAL
+PREV_CPU_IDLE=$CPU_IDLE
+read_net_totals
+PREV_RX=$NET_RX
+PREV_TX=$NET_TX
+read -r PREV_UP _ < /proc/uptime 2>/dev/null || PREV_UP="0.00"
+set_uptime "$PREV_UP"
+build_tty_header
 
 if [ "$ONCE_MODE" = true ]; then
     sleep "$REFRESH_INTERVAL"
@@ -1109,72 +1223,42 @@ printf -v HEART_REST '%d.%03d' $(( HEART_REST_MS / 1000 )) $(( HEART_REST_MS % 1
 play_intro
 
 while true; do
-    if ! read -r _ u n s i w x y z _ < /proc/stat 2>/dev/null; then
+    if ! read_cpu_ticks; then
         sleep "$REFRESH_INTERVAL"
         continue
     fi
-    T=$((u+n+s+i+w+x+y+z)); I=$((i+w))
-    CPU=$(safe_div $((T - PREV_T - (I - PREV_I))) $((T - PREV_T)))
-    PREV_T=$T; PREV_I=$I
+    calc_percent $(( CPU_TOTAL - PREV_CPU_TOTAL - (CPU_IDLE - PREV_CPU_IDLE) )) $(( CPU_TOTAL - PREV_CPU_TOTAL ))
+    CPU=$PERCENT
+    PREV_CPU_TOTAL=$CPU_TOTAL
+    PREV_CPU_IDLE=$CPU_IDLE
 
-    CPU_FREQ=$(awk -F: '/cpu MHz/ {printf "%d", $2; exit}' /proc/cpuinfo 2>/dev/null)
-    if [ -z "$CPU_FREQ" ] && [ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then
-        read -r CPU_FREQ < /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
-        if [[ "$CPU_FREQ" =~ ^[0-9]+$ ]]; then CPU_FREQ=$(( CPU_FREQ / 1000 )); else CPU_FREQ=""; fi
-    fi
-    if [ -z "$CPU_FREQ" ]; then
-        CPU_FREQ_DISP="N/A"
-    else
-        CPU_FREQ_DISP="${CPU_FREQ} MHz"
-    fi
+    read_cpu_freq
+    update_cpu_history
+    read_memory
 
-    hist_len=${#CPU_HISTORY[@]}
-    L=${CPU_HISTORY[$((hist_len - 1))]}
-    D=$(( CPU - L ))
-    O=$CPU
-    if (( D > 5 )); then O=$(( CPU + D * 2 )); elif (( D < -5 )); then O=$(( CPU + D )); fi
-    (( O < 0 )) && O=0; (( O > 100 )) && O=100
-    S=$(( (L * 60 + O * 40) / 100 ))
-    CPU_HISTORY=("${CPU_HISTORY[@]:1}" "$S")
-
-    read -r TOTAL_K AVAIL_K < <(awk '
-        /^MemTotal:/     {t=$2}
-        /^MemAvailable:/ {a=$2}
-        /^MemFree:/      {f=$2}
-        /^Buffers:/      {b=$2}
-        /^Cached:/       {c=$2}
-        END { if (a == 0) a = f + b + c; print t + 0, a + 0 }' /proc/meminfo 2>/dev/null)
-    used_k=$(( TOTAL_K - AVAIL_K ))
-    RAM_P=$(safe_div "$used_k" "$TOTAL_K")
-    RAM_STR=$(awk -v u="$used_k" -v t="$TOTAL_K" 'BEGIN { printf "%.2f/%.2f GiB", u / 1048576, t / 1048576 }')
-
-    read -r RX TX < <(net_totals)
-    read -r NOW_UP _ < /proc/uptime
-    read -r DL UL < <(awk -v rx="$RX" -v tx="$TX" -v prx="$PREV_RX" -v ptx="$PREV_TX" \
-                          -v now="$NOW_UP" -v prev="$PREV_UP" 'BEGIN {
-        dt = now - prev; if (dt <= 0) dt = 1
-        d = (rx - prx) / 1024 / dt; u = (tx - ptx) / 1024 / dt
-        if (d < 0) d = 0; if (u < 0) u = 0
-        printf "%d %d\n", d, u }')
-    PREV_RX=$RX; PREV_TX=$TX; PREV_UP=$NOW_UP
+    read_net_totals
+    read -r NOW_UP _ < /proc/uptime 2>/dev/null || NOW_UP="$PREV_UP"
+    update_net_rates
+    PREV_RX=$NET_RX
+    PREV_TX=$NET_TX
+    PREV_UP=$NOW_UP
 
     refresh_slow_metrics
-    UPTIME="$(get_uptime)"
+    set_uptime "$NOW_UP"
+    update_clock
 
     if [ "$QUIET_MODE" = true ]; then
-        QLINE=$(printf "[%s] CPU:%3d%%  RAM:%3d%%  DSK:%3d%%  NET D:%dKB/s U:%dKB/s  TEMP:%s" \
-            "$(date +'%H:%M:%S')" "$CPU" "$RAM_P" "$DISK_P" "$DL" "$UL" "$CPU_TEMP_DISP")
+        printf -v QLINE '[%s] CPU:%3d%%  RAM:%3d%%  DSK:%3d%%  NET D:%dKB/s U:%dKB/s  TEMP:%s' \
+            "$NOW_HMS" "$CPU" "$RAM_P" "$DISK_P" "$DL" "$UL" "$CPU_TEMP_DISP"
         if [ "$ONCE_MODE" = true ] || [ ! -t 1 ]; then
-            printf "%s\n" "$QLINE"
+            printf '%s\n' "$QLINE"
         else
-            printf "\r\e[K%s" "$QLINE"
+            printf '\r\e[K%s' "$QLINE"
         fi
         [ "$ONCE_MODE" = true ] && break
         wait_or_key "$REFRESH_INTERVAL" && break
         continue
     fi
-
-    NOW_HMS=$(date +'%H:%M:%S')
 
     if [ "$TERM_TYPE" = "gui" ]; then
         build_gui_tail
