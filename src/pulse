@@ -5,7 +5,7 @@
 # Sin set -e: varios comandos opcionales fallan de forma normal.
 set -uo pipefail
 
-readonly SCRIPT_VERSION="1.1.2"
+readonly SCRIPT_VERSION="1.1.3"
 readonly HEART_BEAT_1="0.10"
 readonly HEART_BEAT_2="0.12"
 readonly HEART_BEAT_3="0.10"
@@ -168,6 +168,7 @@ detect_terminal() {
 }
 
 TERM_ROWS=0
+RESIZED=false
 
 update_term_size() {
     local rows
@@ -244,7 +245,7 @@ fi
 
 if [ "$QUIET_MODE" = false ]; then
     update_term_size
-    trap update_term_size WINCH
+    trap 'RESIZED=true' WINCH
 fi
 
 if [ -n "$ORIGINAL_STTY" ] && [ "$ONCE_MODE" = false ]; then
@@ -547,10 +548,18 @@ read_net_totals() {
 wait_or_key() {
     local secs="$1" rc
     if [ -t 0 ]; then
-        read -r -t "$secs" -n 1 _
-        rc=$?
-        [ "$rc" -eq 0 ] && return 0
-        [ "$rc" -gt 128 ] && return 1
+        while true; do
+            if [ "$RESIZED" = true ]; then
+                RESIZED=false
+                update_term_size
+                redraw_static
+            fi
+            read -r -t "$secs" -n 1 _
+            rc=$?
+            [ "$rc" -eq 0 ] && return 0
+            [ "$rc" -le 128 ] && return 1
+            [ "$RESIZED" = true ] || return 1
+        done
     else
         read -r -t 0.05 -n 1 _
         rc=$?
@@ -1200,6 +1209,17 @@ build_tty_frame() {
 
 emit_tty_frame() {
     printf '\e[H%s\e[J' "$FRAME"
+}
+
+redraw_static() {
+    if [ "$TERM_TYPE" = "gui" ]; then
+        build_gui_tail
+        build_gui_frame full "$HEART_BRIGHT"
+        emit_gui_frame "$FRAME"
+    else
+        build_tty_frame
+        emit_tty_frame
+    fi
 }
 
 read_cpu_ticks
